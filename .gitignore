@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.vite/
+target/
+src-tauri/target/
+release_portable/
+*.log
+query_rocom_egg_groups.ps1
+rocom-user-data.json
+cmd

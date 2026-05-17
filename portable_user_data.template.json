@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "records": [],
+  "statCombos": [
+    {
+      "id": "生命|物攻|生命|物防|魔防",
+      "personality": {
+        "increase": "生命",
+        "decrease": "物攻"
+      },
+      "ivs": ["生命", "物防", "魔防"],
+      "label": "+生命/-物攻 | 生命 / 物防 / 魔防"
+    },
+    {
+      "id": "生命|魔攻|生命|物防|魔防",
+      "personality": {
+        "increase": "生命",
+        "decrease": "魔攻"
+      },
+      "ivs": ["生命", "物防", "魔防"],
+      "label": "+生命/-魔攻 | 生命 / 物防 / 魔防"
+    },
+    {
+      "id": "生命|物攻|生命|魔攻|速度",
+      "personality": {
+        "increase": "生命",
+        "decrease": "物攻"
+      },
+      "ivs": ["生命", "魔攻", "速度"],
+      "label": "+生命/-物攻 | 生命 / 魔攻 / 速度"
+    },
+    {
+      "id": "生命|魔攻|生命|物攻|速度",
+      "personality": {
+        "increase": "生命",
+        "decrease": "魔攻"
+      },
+      "ivs": ["生命", "物攻", "速度"],
+      "label": "+生命/-魔攻 | 生命 / 物攻 / 速度"
+    },
+    {
+      "id": "物攻|魔攻|生命|物攻|速度",
+      "personality": {
+        "increase": "物攻",
+        "decrease": "魔攻"
+      },
+      "ivs": ["生命", "物攻", "速度"],
+      "label": "+物攻/-魔攻 | 生命 / 物攻 / 速度"
+    },
+    {
+      "id": "魔攻|物攻|生命|魔攻|速度",
+      "personality": {
+        "increase": "魔攻",
+        "decrease": "物攻"
+      },
+      "ivs": ["生命", "魔攻", "速度"],
+      "label": "+魔攻/-物攻 | 生命 / 魔攻 / 速度"
+    },
+    {
+      "id": "速度|物攻|生命|魔攻|速度",
+      "personality": {
+        "increase": "速度",
+        "decrease": "物攻"
+      },
+      "ivs": ["生命", "魔攻", "速度"],
+      "label": "+速度/-物攻 | 生命 / 魔攻 / 速度"
+    },
+    {
+      "id": "速度|魔攻|生命|物攻|速度",
+      "personality": {
+        "increase": "速度",
+        "decrease": "魔攻"
+      },
+      "ivs": ["生命", "物攻", "速度"],
+      "label": "+速度/-魔攻 | 生命 / 物攻 / 速度"
+    }
+  ],
+  "preferredStatsMode": "detailed",
+  "selectedMedalFilter": []
+}
