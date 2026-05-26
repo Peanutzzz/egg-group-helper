@@ -1,4 +1,4 @@
-import { type MedalName, type StatCombo, type StatName } from "./types";
+import { type SpecialName, type StatName, type StatsPage, type StatsRow } from "./types";
 
 export const STAT_ORDER: StatName[] = [
   "生命",
@@ -9,13 +9,18 @@ export const STAT_ORDER: StatName[] = [
   "速度"
 ];
 
-export const MEDAL_ORDER: MedalName[] = ["大块头", "婉转声"];
+export const DEFAULT_SPECIAL_ORDER: SpecialName[] = [
+  "大块头",
+  "婉转声",
+  "异色",
+  "炫彩"
+];
 
 function createCombo(
   increase: StatName,
   decrease: StatName,
   ivs: StatName[]
-): StatCombo {
+): StatsRow {
   const sortedIvs = [...ivs].sort(
     (left, right) => STAT_ORDER.indexOf(left) - STAT_ORDER.indexOf(right)
   );
@@ -31,7 +36,7 @@ function createCombo(
   };
 }
 
-export const DEFAULT_STAT_COMBOS: StatCombo[] = [
+export const DEFAULT_STAT_COMBOS: StatsRow[] = [
   createCombo("生命", "物攻", ["生命", "物防", "魔防"]),
   createCombo("生命", "魔攻", ["生命", "物防", "魔防"]),
   createCombo("生命", "物攻", ["生命", "魔攻", "速度"]),
@@ -42,21 +47,31 @@ export const DEFAULT_STAT_COMBOS: StatCombo[] = [
   createCombo("速度", "魔攻", ["生命", "物攻", "速度"])
 ];
 
-export const MEDAL_ONLY_COLUMNS = [
+export const DEFAULT_STATS_PAGE_ID = "default";
+
+export const DEFAULT_STATS_PAGES: StatsPage[] = [
+  {
+    id: DEFAULT_STATS_PAGE_ID,
+    name: "默认页",
+    rows: DEFAULT_STAT_COMBOS
+  }
+];
+
+export const SPECIAL_ONLY_COLUMNS = [
   {
     id: "big",
     label: "含大块头",
-    requiredMedals: ["大块头"] as MedalName[]
+    requiredSpecials: ["大块头"] as SpecialName[]
   },
   {
     id: "sound",
     label: "含婉转声",
-    requiredMedals: ["婉转声"] as MedalName[]
+    requiredSpecials: ["婉转声"] as SpecialName[]
   },
   {
     id: "double",
-    label: "双奖章",
-    requiredMedals: ["大块头", "婉转声"] as MedalName[]
+    label: "双特殊",
+    requiredSpecials: ["大块头", "婉转声"] as SpecialName[]
   }
 ];
 

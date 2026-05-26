@@ -136,11 +136,39 @@ button {
   margin: 0;
 }
 
+.hero__side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 360px;
+}
+
+.hero__account-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.84);
+  color: var(--accent-strong);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.hero__account-pill strong {
+  font-size: 19px;
+}
+
+.hero__account-corner {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .hero__stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(120px, 1fr));
   gap: 14px;
-  min-width: 360px;
 }
 
 .hero__stats div {
@@ -167,6 +195,11 @@ button {
 .search-result__content span,
 small {
   color: var(--ink-soft);
+}
+
+.pet-physique {
+  color: rgba(77, 86, 106, 0.82);
+  font-size: 13px;
 }
 
 .tab-bar {
@@ -435,6 +468,15 @@ small {
   flex-wrap: wrap;
 }
 
+.toolbar-card__row--end {
+  justify-content: flex-end;
+}
+
+.toolbar-card__row .app-input {
+  min-width: 220px;
+  flex: 1 1 260px;
+}
+
 .table-toolbar {
   display: flex;
   align-items: center;
@@ -463,6 +505,25 @@ small {
 
 .spotlight-card__content h2 {
   margin: 0 0 8px;
+}
+
+.spotlight-card__personality {
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.spotlight-card__ivs {
+  font-size: 15px;
+  color: #4d566a;
+}
+
+.spotlight-card__personality .stat-up {
+  color: var(--success);
+}
+
+.spotlight-card__personality .stat-down {
+  color: var(--danger);
 }
 
 .target-inline-card {
@@ -530,11 +591,27 @@ small {
   align-items: baseline;
 }
 
+.pet-card__title-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
 .pet-card__title-block {
   display: flex;
   align-items: baseline;
   gap: 4px;
   flex-wrap: wrap;
+}
+
+.pet-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: auto;
 }
 
 .pet-card__meta {
@@ -617,6 +694,11 @@ small {
   background: rgba(255, 255, 255, 0.76);
 }
 
+.coverage-table__column-highlight {
+  background: rgba(255, 240, 214, 0.96) !important;
+  color: var(--accent-strong);
+}
+
 .coverage-table thead th {
   position: sticky;
   top: 0;
@@ -684,6 +766,11 @@ small {
   color: var(--danger);
   font-size: 20px;
   font-weight: 700;
+}
+
+.coverage-cell.is-highlighted {
+  box-shadow: inset 0 0 0 999px rgba(255, 228, 184, 0.18);
+  border-color: rgba(223, 125, 45, 0.22);
 }
 
 .empty-box {
@@ -816,6 +903,20 @@ small {
   gap: 14px;
 }
 
+.stats-builder-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.92fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.stats-highlight-card {
+  height: 100%;
+  background:
+    radial-gradient(circle at top right, rgba(255, 213, 138, 0.2), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(246, 250, 255, 0.82));
+}
+
 .status-message {
   padding: 12px 14px;
   border-radius: 16px;
@@ -898,6 +999,97 @@ small {
   gap: 16px;
 }
 
+.account-current-card,
+.account-actions-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.account-current-card__main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.account-current-card__main strong {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(242, 145, 44, 0.14);
+  border: 1px solid rgba(242, 145, 44, 0.24);
+  font-size: 32px;
+  color: var(--accent-strong);
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+}
+
+.account-current-card__main span,
+.account-card__top span,
+.account-card__meta span {
+  color: var(--ink-soft);
+}
+
+.account-current-card__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.account-current-card__stats div,
+.account-card {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(29, 36, 51, 0.08);
+  border-radius: 20px;
+  padding: 16px;
+}
+
+.account-current-card__stats strong {
+  display: block;
+  font-size: 24px;
+}
+
+.account-create-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.account-create-row .app-input {
+  flex: 1 1 220px;
+}
+
+.account-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.account-card {
+  text-align: left;
+}
+
+.account-card.is-active {
+  border-color: rgba(223, 125, 45, 0.35);
+  background: rgba(255, 241, 227, 0.95);
+}
+
+.account-card__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.account-card__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+}
+
 .info-page {
   display: flex;
   flex-direction: column;
@@ -964,6 +1156,10 @@ small {
   .two-column-layout {
     grid-template-columns: 1fr;
     display: grid;
+  }
+
+  .stats-builder-grid {
+    grid-template-columns: 1fr;
   }
 
   .hero__stats {

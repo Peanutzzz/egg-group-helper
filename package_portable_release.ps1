@@ -1,5 +1,6 @@
 param(
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [string]$Version = "dev"
 )
 
 $ErrorActionPreference = "Stop"
@@ -7,9 +8,10 @@ $ErrorActionPreference = "Stop"
 $projectRoot = $PSScriptRoot
 $releaseRoot = Join-Path $projectRoot "release_portable"
 $packageName = (-join [char[]](0x86CB,0x79CD,0x52A9,0x624B))
+$releaseName = "$packageName-$Version"
 $exeName = "$packageName.exe"
-$packageDir = Join-Path $releaseRoot $packageName
-$zipPath = Join-Path $releaseRoot "$packageName.zip"
+$packageDir = Join-Path $releaseRoot $releaseName
+$zipPath = Join-Path $releaseRoot "$releaseName.zip"
 
 function Write-Step {
     param([string]$Message)

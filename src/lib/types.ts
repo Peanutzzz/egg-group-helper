@@ -7,21 +7,30 @@ export const STAT_NAMES = [
   "速度"
 ] as const;
 
-export const MEDAL_NAMES = ["大块头", "婉转声"] as const;
-
 export type StatName = (typeof STAT_NAMES)[number];
-export type MedalName = (typeof MEDAL_NAMES)[number];
+export type SpecialName = string;
+
+export interface PersonalityFilter {
+  increase: StatName | null;
+  decrease: StatName | null;
+}
 
 export interface PersonalityEffect {
   increase: StatName;
   decrease: StatName;
 }
 
-export interface StatCombo {
+export interface StatsRow {
   id: string;
-  personality: PersonalityEffect;
+  personality: PersonalityFilter;
   ivs: StatName[];
   label: string;
+}
+
+export interface StatsPage {
+  id: string;
+  name: string;
+  rows: StatsRow[];
 }
 
 export interface EggGroupsJsonEntry {
@@ -29,6 +38,9 @@ export interface EggGroupsJsonEntry {
   id: number;
   name: string;
   eggGroups: string[];
+  height?: string;
+  weight?: string;
+  detailUrl?: string;
 }
 
 export interface EggGroupsJson {
@@ -39,20 +51,19 @@ export interface EggGroupsJson {
 
 export interface ImageManifestEntry {
   entryId: number;
-  entryIndex: number;
   id: number;
   name: string;
-  eggGroups: string[];
   imageFile: string;
-  imageRelativePath: string;
-  imageUrl: string;
-  imageBytes: number;
 }
 
 export interface ImageManifestJson {
   schemaVersion: number;
-  imageRoot: string;
   entries: ImageManifestEntry[];
+}
+
+export interface SpecialTraitsJson {
+  schemaVersion: number;
+  specialTraits: SpecialName[];
 }
 
 export interface PetEntry {
@@ -61,6 +72,10 @@ export interface PetEntry {
   name: string;
   eggGroups: string[];
   imagePath: string;
+  imageFallbackPath?: string;
+  height?: string;
+  weight?: string;
+  detailUrl?: string;
 }
 
 export interface RegisteredPetRecord {
@@ -70,18 +85,27 @@ export interface RegisteredPetRecord {
   name: string;
   eggGroups: string[];
   imagePath: string;
+  imageFallbackPath?: string;
   personality: PersonalityEffect;
   ivs: StatName[];
-  medals: MedalName[];
+  specials: SpecialName[];
   createdAt: string;
   note?: string;
+}
+
+export interface BaseConfig {
+  personality: PersonalityFilter;
+  ivs: StatName[];
+  specials: SpecialName[];
 }
 
 export interface LookupConfig {
   personality: PersonalityEffect;
   ivs: StatName[];
-  medals: MedalName[];
+  specials: SpecialName[];
 }
+
+export interface StatsRowDraft extends BaseConfig {}
 
 export interface SearchSuggestion {
   pet: PetEntry;
@@ -111,9 +135,24 @@ export interface StatsCellSelection {
 
 export interface PersistedAppState {
   version: number;
+  accounts: AccountState[];
+  activeAccountId: string;
+  records?: RegisteredPetRecord[];
+  statsPages?: StatsPage[];
+  selectedStatsPageId?: string;
+  preferredStatsMode?: StatsMode;
+  selectedSpecialFilter?: SpecialName[];
+  statCombos?: StatsRow[];
+  customCombos?: StatsRow[];
+}
+
+export interface AccountState {
+  id: string;
+  name: string;
   records: RegisteredPetRecord[];
-  statCombos: StatCombo[];
-  customCombos?: StatCombo[];
+  statsPages: StatsPage[];
+  selectedStatsPageId: string;
   preferredStatsMode: StatsMode;
-  selectedMedalFilter: MedalName[];
+  selectedSpecialFilter: SpecialName[];
+  registerSyncPageId?: string;
 }

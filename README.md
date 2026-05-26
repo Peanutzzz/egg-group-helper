@@ -13,10 +13,11 @@
 
 ## 功能
 
-- 登记精灵配置：支持按中文名或序号模糊搜索，登记性格、3 项个体值和奖章
+- 登记精灵配置：支持按中文名或序号模糊搜索，登记性格、3 项个体值和特殊词条
 - 查询父种：根据目标精灵和目标配置，从已登记记录中查找可用父种
 - 推荐抓取：在缺少合适父种时，按当前配置下的缺口蛋组推荐候选精灵
-- 统计信息：按蛋组与配置组合查看覆盖情况，并支持纯奖章统计模式
+- 统计信息：按蛋组与配置组合查看覆盖情况，并支持纯特殊统计模式
+- 已登记精灵：支持筛选、删除，以及直接编辑已登记配置
 
 ## 数据资源
 
@@ -24,9 +25,23 @@
 
 - `public/rocom_data/rocom_egg_groups.json`
 - `public/rocom_data/rocom_entry_images_manifest.json`
+- `public/rocom_data/rocom_special_traits.json`
 - `public/rocom_data/images/by_entry_id/*.png`
 
 图片文件通过数据中的唯一记录索引与精灵条目对应。
+
+特殊词条库位置：
+
+- `public/rocom_data/rocom_special_traits.json`
+
+当前默认内容为：
+
+- `大块头`
+- `婉转声`
+- `异色`
+- `炫彩`
+
+后续如果你想调整“特殊”的可选范围，直接修改这份 JSON 文件即可，不需要再改界面代码。
 
 ## 数据来源与授权
 
@@ -99,6 +114,7 @@ npm run tauri -- build
 └─ rocom_data/
    ├─ rocom_egg_groups.json
    ├─ rocom_entry_images_manifest.json
+   ├─ rocom_special_traits.json
    └─ images/
       └─ by_entry_id/
 ```
@@ -109,3 +125,25 @@ npm run tauri -- build
 - `rocom_data/`：程序运行所需的数据与图片资源
 - `rocom-user-data.json`：便携版用户配置文件；由打包脚本基于默认模板生成
 - `README.md` / `LICENSE`：建议一并放入压缩包
+
+## 用户数据迁移
+
+如果你发布了新版本压缩包，而用户希望保留旧版本的登记数据，推荐做法是：
+
+1. 解压新版本压缩包
+2. 只把旧版本里的 `rocom-user-data.json` 复制到新版本目录中
+3. 其他资源文件全部使用新版本自带内容
+
+程序会在启动时自动迁移旧版用户数据格式。
+
+例如：
+
+- 旧版本中的 `medals`
+- 旧版本中的 `selectedMedalFilter`
+
+在新版本里会自动迁移为：
+
+- `specials`
+- `selectedSpecialFilter`
+
+也就是说，用户升级时只需要保留一个 `rocom-user-data.json` 文件即可。

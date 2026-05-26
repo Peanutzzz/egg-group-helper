@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { buildSearchSuggestions, formatPetLabel } from "../lib/logic";
+import {
+  buildSearchSuggestions,
+  formatEggGroups,
+  formatPhysique,
+  formatPetLabel
+} from "../lib/logic";
 import { useAppContext } from "../lib/app-context";
 import { type PetEntry } from "../lib/types";
 
@@ -35,18 +40,20 @@ export function SearchPicker({ label, value, onSelect }: SearchPickerProps) {
         placeholder="输入精灵名或序号，例如 188 / 棋棋"
       />
       <div className="search-picker__list">
-        {suggestions.map(({ pet, reason }) => (
+        {suggestions.map(({ pet, reason: _reason }) => (
           <button
-            key={`${pet.entryId}-${reason}`}
+            key={pet.entryId}
             type="button"
             className={`search-result ${value?.entryId === pet.entryId ? "is-active" : ""}`}
             onClick={() => onSelect(pet)}
           >
-            <img src={pet.imagePath} alt={pet.name} className="search-result__image" />
+            <SearchResultImage pet={pet} />
             <div className="search-result__content">
               <strong>{formatPetLabel(pet)}</strong>
-              <span>{pet.eggGroups.join(" / ")}</span>
-              <span>{reason}</span>
+              <span>{formatEggGroups(pet.eggGroups)}</span>
+              {formatPhysique(pet) ? (
+                <small className="pet-physique">{formatPhysique(pet)}</small>
+              ) : null}
             </div>
           </button>
         ))}
@@ -55,5 +62,26 @@ export function SearchPicker({ label, value, onSelect }: SearchPickerProps) {
         ) : null}
       </div>
     </div>
+  );
+}
+
+function SearchResultImage({ pet }: { pet: PetEntry }) {
+  const [src, setSrc] = useState(pet.imagePath);
+
+  useEffect(() => {
+    setSrc(pet.imagePath);
+  }, [pet.imagePath]);
+
+  return (
+    <img
+      src={src}
+      alt={pet.name}
+      className="search-result__image"
+      onError={() => {
+        if (pet.imageFallbackPath && src !== pet.imageFallbackPath) {
+          setSrc(pet.imageFallbackPath);
+        }
+      }}
+    />
   );
 }

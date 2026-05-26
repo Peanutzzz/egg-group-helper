@@ -1,20 +1,26 @@
-import {
+﻿import {
+  DEFAULT_SPECIAL_ORDER,
   DEFAULT_STAT_COMBOS,
-  MEDAL_ONLY_COLUMNS,
-  MEDAL_ORDER,
+  DEFAULT_STATS_PAGE_ID,
+  DEFAULT_STATS_PAGES,
+  SPECIAL_ONLY_COLUMNS,
   STAT_ORDER
 } from "./constants";
 import {
+  type BaseConfig,
+  type AccountState,
   type CatchRecommendation,
   type LookupConfig,
-  type MedalName,
   type ParentMatch,
   type PersistedAppState,
   type PetEntry,
   type PersonalityEffect,
+  type PersonalityFilter,
   type RegisteredPetRecord,
   type SearchSuggestion,
-  type StatCombo,
+  type SpecialName,
+  type StatsPage,
+  type StatsRow,
   type StatName
 } from "./types";
 
@@ -24,10 +30,22 @@ export function sortStats(stats: StatName[]): StatName[] {
   );
 }
 
-export function sortMedals(medals: MedalName[]): MedalName[] {
-  return [...medals].sort(
-    (left, right) => MEDAL_ORDER.indexOf(left) - MEDAL_ORDER.indexOf(right)
-  );
+export function sortSpecials(
+  specials: SpecialName[],
+  availableSpecials = DEFAULT_SPECIAL_ORDER
+): SpecialName[] {
+  return [...specials].sort((left, right) => {
+    const leftIndex = availableSpecials.indexOf(left);
+    const rightIndex = availableSpecials.indexOf(right);
+    const normalizedLeft = leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex;
+    const normalizedRight = rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex;
+
+    if (normalizedLeft !== normalizedRight) {
+      return normalizedLeft - normalizedRight;
+    }
+
+    return left.localeCompare(right, "zh-CN");
+  });
 }
 
 export function validateConfig(
@@ -38,24 +56,28 @@ export function validateConfig(
     return "性格的增加项和减少项不能相同。";
   }
 
-  if (new Set(ivs).size !== 3) {
-    return "个体值需要选择 3 个不同属性。";
+  if (ivs.length < 1 || ivs.length > 3 || new Set(ivs).size !== ivs.length) {
+    return "个体值需要选择 1 到 3 个不同属性。";
   }
 
   return null;
 }
 
 export function normalizeCombo(
-  personality: PersonalityEffect,
+  personality: PersonalityFilter,
   ivs: StatName[]
-): StatCombo {
+): StatsRow {
   const sortedIvs = sortStats(ivs);
+  const personalityLabel = formatPersonalityFilter(personality);
+  const ivsLabel = sortedIvs.length > 0 ? sortedIvs.join(" / ") : "任意个体";
 
   return {
-    id: `${personality.increase}|${personality.decrease}|${sortedIvs.join("|")}`,
+    id: `${personality.increase ?? "*"}|${personality.decrease ?? "*"}|${
+      sortedIvs.length > 0 ? sortedIvs.join("|") : "*"
+    }`,
     personality,
     ivs: sortedIvs,
-    label: `+${personality.increase}/-${personality.decrease} | ${sortedIvs.join(" / ")}`
+    label: `${personalityLabel} | ${ivsLabel}`
   };
 }
 
@@ -67,34 +89,61 @@ export function samePersonality(
 }
 
 export function sameIvs(left: StatName[], right: StatName[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
   const sortedLeft = sortStats(left);
   const sortedRight = sortStats(right);
 
   return sortedLeft.every((value, index) => value === sortedRight[index]);
 }
 
-export function medalsSatisfy(
-  recordMedals: MedalName[],
-  requiredMedals: MedalName[]
+export function personalityMatchesFilter(
+  personality: PersonalityEffect,
+  filter: PersonalityFilter
 ): boolean {
-  if (requiredMedals.length === 0) {
+  if (filter.increase && personality.increase !== filter.increase) {
+    return false;
+  }
+
+  if (filter.decrease && personality.decrease !== filter.decrease) {
+    return false;
+  }
+
+  return true;
+}
+
+export function ivsMatchFilter(recordIvs: StatName[], filterIvs: StatName[]): boolean {
+  if (filterIvs.length === 0) {
     return true;
   }
 
-  return requiredMedals.every((medal) => recordMedals.includes(medal));
+  return filterIvs.every((stat) => recordIvs.includes(stat));
+}
+
+export function specialsSatisfy(
+  recordSpecials: SpecialName[],
+  requiredSpecials: SpecialName[]
+): boolean {
+  if (requiredSpecials.length === 0) {
+    return true;
+  }
+
+  return requiredSpecials.every((special) => recordSpecials.includes(special));
 }
 
 export function recordMatchesLookup(
   record: RegisteredPetRecord,
-  config: LookupConfig,
-  options?: { ignoreMedals?: boolean }
+  config: BaseConfig,
+  options?: { ignoreSpecials?: boolean }
 ): boolean {
   return (
-    samePersonality(record.personality, config.personality) &&
-    sameIvs(record.ivs, config.ivs) &&
-    (options?.ignoreMedals ?? false
+    personalityMatchesFilter(record.personality, config.personality) &&
+    ivsMatchFilter(record.ivs, config.ivs) &&
+    (options?.ignoreSpecials ?? false
       ? true
-      : medalsSatisfy(record.medals, config.medals))
+      : specialsSatisfy(record.specials, config.specials))
   );
 }
 
@@ -216,15 +265,39 @@ export function createRecord(
     name: pet.name,
     eggGroups: pet.eggGroups,
     imagePath: pet.imagePath,
+    imageFallbackPath: pet.imageFallbackPath,
     personality: config.personality,
     ivs: sortStats(config.ivs),
-    medals: sortMedals(config.medals),
+    specials: sortSpecials(config.specials),
     createdAt: new Date().toISOString()
   };
 }
 
-export function mergeCombos(customCombos: StatCombo[]): StatCombo[] {
-  const map = new Map<string, StatCombo>();
+export function formatPhysique(
+  item: { height?: string; weight?: string } | null | undefined
+): string {
+  if (!item) return "";
+  const parts = [item.height?.trim(), item.weight?.trim()].filter(Boolean);
+  return parts.join("  /  ");
+}
+
+export function formatEggGroupsWithPhysique(
+  item: { eggGroups: string[]; height?: string; weight?: string } | null | undefined
+): string {
+  if (!item) return "";
+  const eggGroupsText = formatEggGroups(item.eggGroups);
+  const physiqueText = formatPhysique(item);
+  if (!physiqueText) {
+    return eggGroupsText;
+  }
+  if (!eggGroupsText) {
+    return physiqueText;
+  }
+  return `${eggGroupsText}  ${physiqueText}`;
+}
+
+export function mergeCombos(customCombos: StatsRow[]): StatsRow[] {
+  const map = new Map<string, StatsRow>();
   [...DEFAULT_STAT_COMBOS, ...customCombos].forEach((combo) => {
     map.set(combo.id, {
       ...combo,
@@ -235,17 +308,25 @@ export function mergeCombos(customCombos: StatCombo[]): StatCombo[] {
   return [...map.values()];
 }
 
-export function normalizeCombos(combos: StatCombo[]): StatCombo[] {
-  const map = new Map<string, StatCombo>();
+export function normalizeCombos(combos: StatsRow[]): StatsRow[] {
+  const map = new Map<string, StatsRow>();
   combos.forEach((combo) => {
     map.set(combo.id, normalizeCombo(combo.personality, combo.ivs));
   });
   return [...map.values()];
 }
 
+export function normalizeStatsPages(pages: StatsPage[]): StatsPage[] {
+  return pages.map((page, index) => ({
+    id: page.id || `page-${index + 1}`,
+    name: page.name?.trim() || `第 ${index + 1} 页`,
+    rows: normalizeCombos(page.rows ?? [])
+  }));
+}
+
 export function buildParentMatches(
   targetPet: PetEntry,
-  config: LookupConfig,
+  config: BaseConfig,
   records: RegisteredPetRecord[]
 ): ParentMatch[] {
   return records
@@ -269,7 +350,7 @@ export function buildParentMatches(
 export function getCoveredEggGroups(
   eggGroups: string[],
   records: RegisteredPetRecord[],
-  config: LookupConfig
+  config: BaseConfig
 ): string[] {
   const covered = new Set<string>();
   records.forEach((record) => {
@@ -285,7 +366,7 @@ export function buildCatchRecommendations(
   entries: PetEntry[],
   eggGroups: string[],
   records: RegisteredPetRecord[],
-  config: LookupConfig,
+  config: BaseConfig,
   options?: { targetEggGroups?: string[] }
 ): CatchRecommendation[] {
   const covered = new Set(getCoveredEggGroups(eggGroups, records, config));
@@ -350,47 +431,87 @@ export function dedupeRecommendationsByPetId(
 export function getCellRecords(
   records: RegisteredPetRecord[],
   eggGroup: string,
-  combo: StatCombo,
-  medalFilter: MedalName[]
+  combo: StatsRow,
+  specialFilter: SpecialName[]
 ): RegisteredPetRecord[] {
   return records.filter(
     (record) =>
       record.eggGroups.includes(eggGroup) &&
-      samePersonality(record.personality, combo.personality) &&
-      sameIvs(record.ivs, combo.ivs) &&
-      medalsSatisfy(record.medals, medalFilter)
+      personalityMatchesFilter(record.personality, combo.personality) &&
+      ivsMatchFilter(record.ivs, combo.ivs) &&
+      specialsSatisfy(record.specials, specialFilter)
   );
 }
 
-export function getMedalCellRecords(
+export function getSpecialCellRecords(
   records: RegisteredPetRecord[],
   eggGroup: string,
-  requiredMedals: MedalName[]
+  requiredSpecials: SpecialName[]
 ): RegisteredPetRecord[] {
   return records.filter(
     (record) =>
       record.eggGroups.includes(eggGroup) &&
-      medalsSatisfy(record.medals, requiredMedals)
+      specialsSatisfy(record.specials, requiredSpecials)
   );
 }
 
-export function getDefaultState(): PersistedAppState {
+export function createStatsPage(name: string, rows: StatsRow[] = DEFAULT_STAT_COMBOS): StatsPage {
   return {
-    version: 1,
-    records: [],
-    statCombos: DEFAULT_STAT_COMBOS,
-    preferredStatsMode: "detailed",
-    selectedMedalFilter: []
+    id: globalThis.crypto?.randomUUID?.() ?? `page-${Date.now()}-${Math.random()}`,
+    name: name.trim() || "新统计页",
+    rows: normalizeCombos(rows)
   };
 }
 
-export function formatMedals(medals: MedalName[]): string {
-  if (medals.length === 0) return "无奖章";
-  return sortMedals(medals).join(" + ");
+export function createAccountState(name = "默认账号"): AccountState {
+  const defaultState = getSingleAccountDefaultState();
+  return {
+    id: globalThis.crypto?.randomUUID?.() ?? `account-${Date.now()}-${Math.random()}`,
+    name,
+    ...defaultState
+  };
+}
+
+export function getSingleAccountDefaultState() {
+  return {
+    records: [],
+    statsPages: DEFAULT_STATS_PAGES,
+    selectedStatsPageId: DEFAULT_STATS_PAGE_ID,
+    preferredStatsMode: "detailed" as const,
+    selectedSpecialFilter: [],
+    registerSyncPageId: "none"
+  };
+}
+
+export function getDefaultState(): PersistedAppState {
+  const defaultAccount = createAccountState();
+  return {
+    version: 2,
+    accounts: [defaultAccount],
+    activeAccountId: defaultAccount.id
+  };
+}
+
+export function formatSpecials(specials: SpecialName[]): string {
+  if (specials.length === 0) return "无特殊";
+  return sortSpecials(specials).join(" + ");
 }
 
 export function formatPersonality(personality: PersonalityEffect): string {
   return `+${personality.increase}/-${personality.decrease}`;
+}
+
+export function formatPersonalityFilter(personality: PersonalityFilter): string {
+  if (personality.increase && personality.decrease) {
+    return `+${personality.increase}/-${personality.decrease}`;
+  }
+  if (personality.increase) {
+    return `+${personality.increase}`;
+  }
+  if (personality.decrease) {
+    return `-${personality.decrease}`;
+  }
+  return "任意性格";
 }
 
 export function formatEggGroups(eggGroups: string[]): string {
@@ -401,6 +522,10 @@ export function formatPetLabel(pet: { petId: number; name: string }): string {
   return `NO.${String(pet.petId).padStart(3, "0")} ${pet.name}`;
 }
 
-export function getMedalColumns() {
-  return MEDAL_ONLY_COLUMNS;
+export function buildStatsRowDraft(config: BaseConfig): StatsRow {
+  return normalizeCombo(config.personality, config.ivs);
+}
+
+export function getSpecialColumns() {
+  return SPECIAL_ONLY_COLUMNS;
 }

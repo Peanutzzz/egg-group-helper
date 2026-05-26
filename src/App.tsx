@@ -3,27 +3,29 @@ import { AppProvider, useAppContext } from "./lib/app-context";
 import { ConfigEditor } from "./components/ConfigEditor";
 import { PetCard } from "./components/PetCard";
 import { SearchPicker } from "./components/SearchPicker";
-import { EMPTY_PERSONALITY, MEDAL_ONLY_COLUMNS } from "./lib/constants";
+import { DEFAULT_STATS_PAGE_ID, EMPTY_PERSONALITY } from "./lib/constants";
 import {
   buildCatchRecommendations,
-  dedupeRecommendationsByPetId,
   buildParentMatches,
+  dedupeRecommendationsByPetId,
   formatEggGroups,
-  formatMedals,
   formatPersonality,
+  formatPersonalityFilter,
+  formatPhysique,
   formatPetLabel,
+  formatSpecials,
   getCellRecords,
-  getMedalCellRecords,
-  getMedalColumns,
+  getSpecialCellRecords,
   petMatchesKeyword,
-  validateConfig
+  sortSpecials
 } from "./lib/logic";
 import "./styles/app.css";
 import {
+  type BaseConfig,
   type LookupConfig,
-  type MedalName,
   type PetEntry,
   type RegisteredPetRecord,
+  type SpecialName,
   type StatsMode
 } from "./lib/types";
 
@@ -33,21 +35,91 @@ const INITIAL_CONFIG: LookupConfig = {
     decrease: EMPTY_PERSONALITY.decrease
   },
   ivs: ["生命", "物防", "魔防"],
-  medals: []
+  specials: []
 };
 
-type TabKey = "register" | "lookup" | "stats" | "records" | "about";
+const INITIAL_STATS_ROW_CONFIG: BaseConfig = {
+  personality: {
+    increase: EMPTY_PERSONALITY.increase,
+    decrease: EMPTY_PERSONALITY.decrease
+  },
+  ivs: ["生命", "物防", "魔防"],
+  specials: []
+};
+
+type TabKey = "register" | "lookup" | "stats" | "records" | "accounts" | "about";
 
 function cloneConfig(config: LookupConfig): LookupConfig {
   return {
     personality: { ...config.personality },
     ivs: [...config.ivs],
-    medals: [...config.medals]
+    specials: [...config.specials]
+  };
+}
+
+function cloneBaseConfig(config: BaseConfig): BaseConfig {
+  return {
+    personality: { ...config.personality },
+    ivs: [...config.ivs],
+    specials: [...config.specials]
   };
 }
 
 function formatStatsEggGroupLabel(eggGroup: string): string {
   return eggGroup.endsWith("组") ? eggGroup.slice(0, -1) : eggGroup;
+}
+
+function renderPersonalityFilter(personality: BaseConfig["personality"]) {
+  if (personality.increase && personality.decrease) {
+    return (
+      <>
+        <span className="stat-up">+{personality.increase}</span>
+        <span className="combo-separator"> / </span>
+        <span className="stat-down">-{personality.decrease}</span>
+      </>
+    );
+  }
+
+  if (personality.increase) {
+    return <span className="stat-up">+{personality.increase}</span>;
+  }
+
+  if (personality.decrease) {
+    return <span className="stat-down">-{personality.decrease}</span>;
+  }
+
+  return <span>任意性格</span>;
+}
+
+function PetImage({
+  src,
+  fallbackSrc,
+  alt,
+  className
+}: {
+  src: string;
+  fallbackSrc?: string;
+  alt: string;
+  className?: string;
+}) {
+  const [currentSrc, setCurrentSrc] = useState(src);
+
+  useEffect(() => {
+    setCurrentSrc(src);
+  }, [src]);
+
+  return (
+    <img
+      src={currentSrc}
+      alt={alt}
+      className={className}
+      onError={() => {
+        if (fallbackSrc && currentSrc !== fallbackSrc) {
+          setCurrentSrc(fallbackSrc);
+        }
+      }}
+    />
+  );
 }
 
 function Shell() {
@@ -56,17 +128,31 @@ function Shell() {
     loadError,
     entries,
     eggGroups,
+    specialTraits,
+    accounts,
+    activeAccountId,
     records,
-    statCombos,
-    addRecord,
-    removeRecord,
-    addCustomCombo,
-    removeCustomCombo,
-    preferredStatsMode,
-    setPreferredStatsMode,
-    selectedMedalFilter,
-    setSelectedMedalFilter
-  } = useAppContext();
+    statsPages,
+      selectedStatsPageId,
+      addRecord,
+      updateRecord,
+      removeRecord,
+      addAccount,
+    renameAccount,
+    removeAccount,
+    setActiveAccountId,
+    addStatsPage,
+    removeStatsPage,
+    setSelectedStatsPageId,
+      addStatsRow,
+      removeStatsRow,
+      preferredStatsMode,
+      setPreferredStatsMode,
+      selectedSpecialFilter,
+      setSelectedSpecialFilter,
+      registerSyncPageId,
+      setRegisterSyncPageId
+    } = useAppContext();
 
   const visibleEggGroups = useMemo(
     () => eggGroups.filter((group) => group !== "无法孵蛋"),
@@ -75,15 +161,23 @@ function Shell() {
 
   const [tab, setTab] = useState<TabKey>("register");
   const [registerTarget, setRegisterTarget] = useState<PetEntry | null>(null);
-  const [lookupTarget, setLookupTarget] = useState<PetEntry | null>(null);
-  const [registerConfig, setRegisterConfig] = useState<LookupConfig>(cloneConfig(INITIAL_CONFIG));
-  const [lookupConfig, setLookupConfig] = useState<LookupConfig>(cloneConfig(INITIAL_CONFIG));
-  const [registerMessage, setRegisterMessage] = useState<string | null>(null);
-  const [customComboConfig, setCustomComboConfig] = useState<LookupConfig>(cloneConfig(INITIAL_CONFIG));
-  const [customComboMessage, setCustomComboMessage] = useState<string | null>(null);
+    const [lookupTarget, setLookupTarget] = useState<PetEntry | null>(null);
+    const [statsHighlightTarget, setStatsHighlightTarget] = useState<PetEntry | null>(null);
+  const [registerConfig, setRegisterConfig] = useState<LookupConfig>(
+    cloneConfig(INITIAL_CONFIG)
+  );
+  const [lookupConfig, setLookupConfig] = useState<BaseConfig>(
+    cloneBaseConfig(INITIAL_CONFIG)
+  );
+    const [registerMessage, setRegisterMessage] = useState<string | null>(null);
+    const [statsRowConfig, setStatsRowConfig] = useState<BaseConfig>(
+      cloneBaseConfig(INITIAL_STATS_ROW_CONFIG)
+    );
+  const [statsRowMessage, setStatsRowMessage] = useState<string | null>(null);
+  const [newStatsPageName, setNewStatsPageName] = useState("");
   const [selectedEggGroup, setSelectedEggGroup] = useState<string | null>(null);
-  const [selectedComboId, setSelectedComboId] = useState<string | null>(null);
-  const [selectedMedalColumnId, setSelectedMedalColumnId] = useState<string | null>(null);
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+  const [selectedSpecialColumnId, setSelectedSpecialColumnId] = useState<string | null>(null);
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
   const [lookupRecommendationPage, setLookupRecommendationPage] = useState(1);
   const [isLookupRecommendationOpen, setIsLookupRecommendationOpen] = useState(false);
@@ -94,10 +188,26 @@ function Shell() {
     useState<string>("全部");
   const [recordKeyword, setRecordKeyword] = useState("");
   const [recordEggGroupFilter, setRecordEggGroupFilter] = useState<string[]>(["全部"]);
-  const [recordMedalFilter, setRecordMedalFilter] = useState<MedalName[]>([]);
+  const [recordSpecialFilter, setRecordSpecialFilter] = useState<SpecialName[]>([]);
+  const [editingRecord, setEditingRecord] = useState<RegisteredPetRecord | null>(null);
+  const [editingConfig, setEditingConfig] = useState<LookupConfig | null>(null);
+    const [editingMessage, setEditingMessage] = useState<string | null>(null);
+    const [newAccountName, setNewAccountName] = useState("");
+    const [pendingDeleteAccount, setPendingDeleteAccount] = useState<{ id: string; name: string } | null>(null);
+    const [pendingRenameAccount, setPendingRenameAccount] = useState<{ id: string; currentName: string } | null>(null);
+    const [renameAccountInput, setRenameAccountInput] = useState("");
 
   const lookupPageSize = 12;
   const statsPageSize = 10;
+  const activeAccount = accounts.find((account) => account.id === activeAccountId) ?? accounts[0] ?? null;
+
+    const activeStatsPage =
+      statsPages.find((page) => page.id === selectedStatsPageId) ?? statsPages[0] ?? null;
+    const activeStatsRows = activeStatsPage?.rows ?? [];
+    const selectedRow = activeStatsRows.find((row) => row.id === selectedRowId) ?? null;
+    const highlightedStatsEggGroups = statsHighlightTarget?.eggGroups.filter(
+      (group) => group !== "无法孵蛋"
+    ) ?? [];
 
   const parentMatches = useMemo(() => {
     if (!lookupTarget) return [];
@@ -113,20 +223,14 @@ function Shell() {
     );
   }, [entries, visibleEggGroups, records, lookupConfig, lookupTarget]);
 
-  const lookupRecommendationPageCount = Math.max(
-    1,
-    Math.ceil(
-      lookupRecommendations.filter((item) =>
-        lookupRecommendationEggGroupFilter === "全部"
-          ? true
-          : item.pet.eggGroups.includes(lookupRecommendationEggGroupFilter)
-      ).length / lookupPageSize
-    )
-  );
   const filteredLookupRecommendations = lookupRecommendations.filter((item) =>
     lookupRecommendationEggGroupFilter === "全部"
       ? true
       : item.missingEggGroupsCovered.includes(lookupRecommendationEggGroupFilter)
+  );
+  const lookupRecommendationPageCount = Math.max(
+    1,
+    Math.ceil(filteredLookupRecommendations.length / lookupPageSize)
   );
   const pagedLookupRecommendations = filteredLookupRecommendations.slice(
     (lookupRecommendationPage - 1) * lookupPageSize,
@@ -147,47 +251,53 @@ function Shell() {
   const filteredRecords = useMemo(() => {
     return records.filter((record) => {
       const matchesKeyword =
-        !recordKeyword.trim() || petMatchesKeyword(record, recordKeyword) || record.name.includes(recordKeyword.trim());
+        !recordKeyword.trim() ||
+        petMatchesKeyword(record, recordKeyword) ||
+        record.name.includes(recordKeyword.trim());
       const matchesEggGroup =
         recordEggGroupFilter.includes("全部") ||
         recordEggGroupFilter.some((group) => record.eggGroups.includes(group));
-      const matchesMedals = recordMedalFilter.every((medal) => record.medals.includes(medal));
-      return matchesKeyword && matchesEggGroup && matchesMedals;
+      const matchesSpecials = recordSpecialFilter.every((special) =>
+        record.specials.includes(special)
+      );
+      return matchesKeyword && matchesEggGroup && matchesSpecials;
     });
-  }, [recordEggGroupFilter, recordKeyword, recordMedalFilter, records]);
-
-  const selectedCombo = statCombos.find((combo) => combo.id === selectedComboId) ?? null;
-  const selectedMedalColumn =
-    getMedalColumns().find((column) => column.id === selectedMedalColumnId) ?? null;
+  }, [recordEggGroupFilter, recordKeyword, recordSpecialFilter, records]);
 
   const cellRecords =
-    selectedEggGroup && selectedCombo
-      ? getCellRecords(records, selectedEggGroup, selectedCombo, selectedMedalFilter)
+    selectedEggGroup && selectedRow
+      ? getCellRecords(records, selectedEggGroup, selectedRow, selectedSpecialFilter)
       : [];
-  const medalCellRecords =
-    selectedEggGroup && selectedMedalColumn
-      ? getMedalCellRecords(records, selectedEggGroup, selectedMedalColumn.requiredMedals)
-      : [];
+  const specialCellRecords = selectedEggGroup
+    ? getSpecialCellRecords(records, selectedEggGroup, selectedSpecialFilter)
+    : [];
 
   const selectedRecommendationConfig = useMemo<LookupConfig | null>(() => {
-    if (!selectedCombo) return null;
+    if (!selectedRow) return null;
+    if (
+      selectedRow.personality.increase === null ||
+      selectedRow.personality.decrease === null ||
+      selectedRow.ivs.length === 0
+    ) {
+      return null;
+    }
+
     return {
-      personality: selectedCombo.personality,
-      ivs: selectedCombo.ivs,
-      medals: [...selectedMedalFilter]
+      personality: {
+        increase: selectedRow.personality.increase,
+        decrease: selectedRow.personality.decrease
+      },
+      ivs: selectedRow.ivs,
+      specials: [...selectedSpecialFilter]
     };
-  }, [selectedCombo, selectedMedalFilter]);
+  }, [selectedRow, selectedSpecialFilter]);
 
   const rawStatsRecommendations = useMemo(() => {
     if (!selectedEggGroup || !selectedRecommendationConfig) return [];
     return dedupeRecommendationsByPetId(
-      buildCatchRecommendations(
-        entries,
-        visibleEggGroups,
-        records,
-        selectedRecommendationConfig,
-        { targetEggGroups: [selectedEggGroup] }
-      )
+      buildCatchRecommendations(entries, visibleEggGroups, records, selectedRecommendationConfig, {
+        targetEggGroups: [selectedEggGroup]
+      })
     );
   }, [entries, visibleEggGroups, records, selectedEggGroup, selectedRecommendationConfig]);
 
@@ -228,27 +338,264 @@ function Shell() {
     lookupConfig.personality.increase,
     lookupConfig.personality.decrease,
     lookupConfig.ivs.join("|"),
-    lookupConfig.medals.join("|"),
+    lookupConfig.specials.join("|"),
+    lookupRecommendationEggGroupFilter,
     records.length
   ]);
 
   useEffect(() => {
     setLookupRecommendationEggGroupFilter("全部");
-  }, [lookupTarget?.entryId, lookupConfig.personality.increase, lookupConfig.personality.decrease, lookupConfig.ivs.join("|"), lookupConfig.medals.join("|")]);
+  }, [
+    lookupTarget?.entryId,
+    lookupConfig.personality.increase,
+    lookupConfig.personality.decrease,
+    lookupConfig.ivs.join("|"),
+    lookupConfig.specials.join("|")
+  ]);
 
   useEffect(() => {
     setStatsRecommendationPage(1);
   }, [
     selectedEggGroup,
-    selectedComboId,
-    selectedMedalFilter.join("|"),
+    selectedRowId,
+    selectedSpecialFilter.join("|"),
     statsRecommendationEggGroupFilter,
     records.length
   ]);
 
   useEffect(() => {
     setStatsRecommendationEggGroupFilter("全部");
-  }, [selectedEggGroup, selectedComboId, selectedMedalColumnId]);
+  }, [selectedEggGroup, selectedRowId, selectedSpecialColumnId]);
+
+  useEffect(() => {
+      if (
+        registerSyncPageId !== "none" &&
+        !statsPages.some((page) => page.id === registerSyncPageId)
+      ) {
+        void setRegisterSyncPageId("none");
+      }
+    }, [registerSyncPageId, statsPages]);
+
+  function handleRegisterConfigChange(value: BaseConfig) {
+    if (value.personality.increase === null || value.personality.decrease === null) {
+      return;
+    }
+
+    setRegisterConfig({
+      personality: {
+        increase: value.personality.increase,
+        decrease: value.personality.decrease
+      },
+      ivs: value.ivs,
+      specials: value.specials
+    });
+  }
+
+  function handleLookupConfigChange(value: BaseConfig) {
+    setLookupConfig(value);
+  }
+
+  function handleEditingConfigChange(value: BaseConfig) {
+    if (!editingConfig) return;
+    if (value.personality.increase === null || value.personality.decrease === null) {
+      return;
+    }
+
+    setEditingConfig({
+      personality: {
+        increase: value.personality.increase,
+        decrease: value.personality.decrease
+      },
+      ivs: value.ivs,
+      specials: value.specials
+    });
+  }
+
+  async function handleRegister() {
+    if (!registerTarget) {
+      setRegisterMessage("请先选择要登记的精灵。");
+      return;
+    }
+
+    const error = await addRecord(registerTarget, registerConfig);
+    if (error) {
+      setRegisterMessage(error);
+      return;
+    }
+
+    if (registerSyncPageId !== "none") {
+      const syncError = await addStatsRow(registerSyncPageId, {
+        ...registerConfig,
+        specials: []
+      });
+      const syncPage = statsPages.find((page) => page.id === registerSyncPageId);
+
+      if (syncError && syncError !== "这个统计行已经存在了。") {
+        setRegisterMessage(
+          `已登记 ${formatPetLabel(registerTarget)}，但同步统计行失败：${syncError}`
+        );
+        return;
+      }
+
+      if (syncError === null && syncPage) {
+        setRegisterMessage(
+          `已登记 ${formatPetLabel(registerTarget)}，并同步到统计页“${syncPage.name}”。`
+        );
+        return;
+      }
+    }
+
+    setRegisterMessage(`已登记 ${formatPetLabel(registerTarget)}。`);
+  }
+
+  async function handleCreateStatsRow() {
+    if (!activeStatsPage) {
+      setStatsRowMessage("未找到当前统计页。");
+      return;
+    }
+
+    const error = await addStatsRow(activeStatsPage.id, {
+      ...statsRowConfig,
+      specials: []
+    });
+    if (error) {
+      setStatsRowMessage(error);
+      return;
+    }
+
+    setStatsRowConfig(cloneBaseConfig(INITIAL_STATS_ROW_CONFIG));
+    setStatsRowMessage("已添加到统计行。");
+  }
+
+  async function handleCreateStatsPage() {
+    await addStatsPage(newStatsPageName || `第 ${statsPages.length + 1} 页`);
+    setNewStatsPageName("");
+  }
+
+  async function handleCreateAccount() {
+    await addAccount(newAccountName || `账号 ${accounts.length + 1}`);
+    setNewAccountName("");
+  }
+
+    async function handleRenameActiveAccount() {
+      if (!activeAccount) return;
+      setPendingRenameAccount({
+        id: activeAccount.id,
+        currentName: activeAccount.name
+      });
+      setRenameAccountInput(activeAccount.name);
+    }
+
+  async function handleRemoveActiveAccount() {
+    if (!activeAccount || accounts.length <= 1) return;
+    setPendingDeleteAccount({
+      id: activeAccount.id,
+      name: activeAccount.name
+    });
+  }
+
+    async function confirmRemoveAccount() {
+      if (!pendingDeleteAccount) return;
+      await removeAccount(pendingDeleteAccount.id);
+      setPendingDeleteAccount(null);
+    }
+
+    async function confirmRenameAccount() {
+      if (!pendingRenameAccount) return;
+      const nextName = renameAccountInput.trim();
+      if (!nextName) return;
+      await renameAccount(pendingRenameAccount.id, nextName);
+      setPendingRenameAccount(null);
+      setRenameAccountInput("");
+    }
+
+  function toggleStatsSpecial(special: SpecialName) {
+    const exists = selectedSpecialFilter.includes(special);
+    const next = exists
+      ? selectedSpecialFilter.filter((item) => item !== special)
+      : [...selectedSpecialFilter, special];
+    void setSelectedSpecialFilter(sortSpecials(next, specialTraits));
+  }
+
+  function toggleRecordSpecial(special: SpecialName) {
+    const exists = recordSpecialFilter.includes(special);
+    setRecordSpecialFilter(
+      exists
+        ? recordSpecialFilter.filter((item) => item !== special)
+        : sortSpecials([...recordSpecialFilter, special], specialTraits)
+    );
+  }
+
+  function toggleRecordEggGroup(group: string) {
+    if (group === "全部") {
+      setRecordEggGroupFilter(["全部"]);
+      return;
+    }
+
+    setRecordEggGroupFilter((current) => {
+      const withoutAll = current.filter((item) => item !== "全部");
+      if (withoutAll.includes(group)) {
+        const next = withoutAll.filter((item) => item !== group);
+        return next.length > 0 ? next : ["全部"];
+      }
+      return [...withoutAll, group];
+    });
+  }
+
+  function closeStatsModal() {
+    setIsStatsModalOpen(false);
+    setSelectedEggGroup(null);
+    setSelectedRowId(null);
+    setSelectedSpecialColumnId(null);
+  }
+
+  function closeLookupRecommendationModal() {
+    setIsLookupRecommendationOpen(false);
+  }
+
+  function openDetailedCell(eggGroup: string, rowId: string) {
+    setSelectedEggGroup(eggGroup);
+    setSelectedRowId(rowId);
+    setSelectedSpecialColumnId(null);
+    setIsStatsModalOpen(true);
+  }
+
+  function openSpecialCell(eggGroup: string) {
+    setSelectedEggGroup(eggGroup);
+    setSelectedSpecialColumnId("special-filter");
+    setSelectedRowId(null);
+    setIsStatsModalOpen(true);
+  }
+
+  function openRecordEditor(record: RegisteredPetRecord) {
+    setEditingRecord(record);
+    setEditingConfig({
+      personality: { ...record.personality },
+      ivs: [...record.ivs],
+      specials: [...record.specials]
+    });
+    setEditingMessage(null);
+  }
+
+  function closeRecordEditor() {
+    setEditingRecord(null);
+    setEditingConfig(null);
+    setEditingMessage(null);
+  }
+
+  async function handleSaveRecordEdit() {
+    if (!editingRecord || !editingConfig) {
+      return;
+    }
+
+    const error = await updateRecord(editingRecord.recordId, editingConfig);
+    if (error) {
+      setEditingMessage(error);
+      return;
+    }
+
+    closeRecordEditor();
+  }
 
   if (loading) {
     return (
@@ -273,117 +620,32 @@ function Shell() {
     );
   }
 
-  async function handleRegister() {
-    if (!registerTarget) {
-      setRegisterMessage("请先选择要登记的精灵。");
-      return;
-    }
-
-    const error = await addRecord(registerTarget, registerConfig);
-    setRegisterMessage(error ?? `已登记 ${formatPetLabel(registerTarget)}。`);
-  }
-
-  async function handleCreateCombo() {
-    const comboWithoutMedals: LookupConfig = {
-      personality: customComboConfig.personality,
-      ivs: customComboConfig.ivs,
-      medals: []
-    };
-
-    const error = await addCustomCombo(comboWithoutMedals);
-    if (error) {
-      setCustomComboMessage(error);
-      return;
-    }
-
-    setCustomComboConfig(cloneConfig(INITIAL_CONFIG));
-    setCustomComboMessage("已添加到统计行。");
-  }
-
-  function toggleStatsMedal(medal: MedalName) {
-    const exists = selectedMedalFilter.includes(medal);
-    const next = exists
-      ? selectedMedalFilter.filter((item) => item !== medal)
-      : [...selectedMedalFilter, medal];
-    void setSelectedMedalFilter(next);
-  }
-
-  function toggleRecordMedal(medal: MedalName) {
-    const exists = recordMedalFilter.includes(medal);
-    setRecordMedalFilter(
-      exists
-        ? recordMedalFilter.filter((item) => item !== medal)
-        : [...recordMedalFilter, medal]
-    );
-  }
-
-  function toggleRecordEggGroup(group: string) {
-    if (group === "全部") {
-      setRecordEggGroupFilter(["全部"]);
-      return;
-    }
-
-    setRecordEggGroupFilter((current) => {
-      const withoutAll = current.filter((item) => item !== "全部");
-      if (withoutAll.includes(group)) {
-        const next = withoutAll.filter((item) => item !== group);
-        return next.length > 0 ? next : ["全部"];
-      }
-      return [...withoutAll, group];
-    });
-  }
-
-  function closeStatsModal() {
-    setIsStatsModalOpen(false);
-    setSelectedEggGroup(null);
-    setSelectedComboId(null);
-    setSelectedMedalColumnId(null);
-  }
-
-  function closeLookupRecommendationModal() {
-    setIsLookupRecommendationOpen(false);
-  }
-
-  function openDetailedCell(eggGroup: string, comboId: string) {
-    setSelectedEggGroup(eggGroup);
-    setSelectedComboId(comboId);
-    setSelectedMedalColumnId(null);
-    setIsStatsModalOpen(true);
-  }
-
-  function openMedalCell(eggGroup: string, medalColumnId: string) {
-    setSelectedEggGroup(eggGroup);
-    setSelectedMedalColumnId(medalColumnId);
-    setSelectedComboId(null);
-    setIsStatsModalOpen(true);
-  }
-
-  const customComboError = validateConfig(
-    customComboConfig.personality,
-    customComboConfig.ivs
-  );
-
   return (
     <div className="app-shell">
       <header className="hero">
         <div className="hero__text">
           <h1>蛋种助手</h1>
-          <p>
-            快速登记精灵配置、查找父种、补充缺失蛋组父种，并统计你当前的蛋组和配置覆盖率
-          </p>
+          <p>快速登记精灵配置、查找父种、补充缺失蛋组父种，并统计你当前的蛋组和配置覆盖率</p>
         </div>
-        <div className="hero__stats">
-          <div>
-            <strong>{records.length}</strong>
-            <span>已登记记录</span>
+        <div className="hero__side">
+          <div className="hero__stats">
+            <div>
+              <strong>{records.length}</strong>
+              <span>已登记记录</span>
+            </div>
+            <div>
+              <strong>{entries.length}</strong>
+              <span>图鉴精灵</span>
+            </div>
+            <div>
+              <strong>{visibleEggGroups.length}</strong>
+              <span>有效蛋组</span>
+            </div>
           </div>
-          <div>
-            <strong>{entries.length}</strong>
-            <span>图鉴精灵</span>
-          </div>
-          <div>
-            <strong>{visibleEggGroups.length}</strong>
-            <span>有效蛋组</span>
+          <div className="hero__account-corner">
+            <div className="hero__account-pill">
+              当前账号：<strong>{activeAccount?.name ?? "默认账号"}</strong>
+            </div>
           </div>
         </div>
       </header>
@@ -408,6 +670,7 @@ function Shell() {
         <div className="tab-bar__group tab-bar__group--right">
           {[
             ["records", "已登记精灵"],
+            ["accounts", "账号管理"],
             ["about", "关于本项目"]
           ].map(([key, label]) => (
             <button
@@ -426,15 +689,12 @@ function Shell() {
         <section className={`page-panel ${tab === "register" ? "is-active" : ""}`}>
           <div className="two-column-layout">
             <div className="panel-stack">
-              <SearchPicker
-                label="选择要登记的精灵"
-                value={registerTarget}
-                onSelect={setRegisterTarget}
-              />
+              <SearchPicker label="选择要登记的精灵" value={registerTarget} onSelect={setRegisterTarget} />
               <ConfigEditor
                 title="登记配置"
                 value={registerConfig}
-                onChange={setRegisterConfig}
+                onChange={handleRegisterConfigChange}
+                specialTraits={specialTraits}
               />
               <div className="field-card action-card">
                 <button type="button" className="primary-button" onClick={handleRegister}>
@@ -445,21 +705,53 @@ function Shell() {
             </div>
 
             <div className="panel-stack">
+              <div className="field-card">
+                <div className="field-card__header">
+                  <span>同步到统计行</span>
+                </div>
+                <select
+                  className="app-select"
+                  value={registerSyncPageId}
+                  onChange={(event) => setRegisterSyncPageId(event.target.value)}
+                >
+                  <option value="none">不同步</option>
+                  {statsPages.map((page) => (
+                    <option key={`register-sync-${page.id}`} value={page.id}>
+                      {page.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="field-card spotlight-card">
                 {registerTarget ? (
                   <>
-                    <img
+                    <PetImage
                       className="spotlight-card__image"
                       src={registerTarget.imagePath}
+                      fallbackSrc={registerTarget.imageFallbackPath}
                       alt={registerTarget.name}
                     />
                     <div className="spotlight-card__content">
                       <h2>{formatPetLabel(registerTarget)}</h2>
                       <p>{formatEggGroups(registerTarget.eggGroups)}</p>
-                      <span>
-                        {formatPersonality(registerConfig.personality)} ·{" "}
-                        {registerConfig.ivs.join(" / ")} · {formatMedals(registerConfig.medals)}
-                      </span>
+                      {formatPhysique(registerTarget) ? (
+                        <small className="pet-physique">{formatPhysique(registerTarget)}</small>
+                      ) : null}
+                      <div className="spotlight-card__personality">
+                        <span className="stat-up">+{registerConfig.personality.increase}</span>
+                        <span className="combo-separator"> / </span>
+                        <span className="stat-down">-{registerConfig.personality.decrease}</span>
+                      </div>
+                      <div className="spotlight-card__ivs">{registerConfig.ivs.join(" / ")}</div>
+                      {registerConfig.specials.length > 0 ? (
+                        <div className="pet-card__medals">
+                          {registerConfig.specials.map((special) => (
+                            <span key={`register-preview-${special}`} className="pet-card__medal-chip">
+                              {special}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   </>
                 ) : (
@@ -473,15 +765,13 @@ function Shell() {
         <section className={`page-panel ${tab === "lookup" ? "is-active" : ""}`}>
           <div className="two-column-layout">
             <div className="panel-stack">
-              <SearchPicker
-                label="选择目标精灵"
-                value={lookupTarget}
-                onSelect={setLookupTarget}
-              />
+              <SearchPicker label="选择目标精灵" value={lookupTarget} onSelect={setLookupTarget} />
               <ConfigEditor
                 title="目标配置"
                 value={lookupConfig}
-                onChange={setLookupConfig}
+                onChange={handleLookupConfigChange}
+                specialTraits={specialTraits}
+                allowAnyPersonality
               />
             </div>
 
@@ -490,11 +780,7 @@ function Shell() {
                 <div className="field-card__header">
                   <span>符合要求的父种</span>
                   {lookupTarget ? (
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={() => setIsLookupRecommendationOpen(true)}
-                    >
+                    <button type="button" className="secondary-button" onClick={() => setIsLookupRecommendationOpen(true)}>
                       推荐抓取列表
                     </button>
                   ) : null}
@@ -502,35 +788,35 @@ function Shell() {
                 {lookupTarget ? (
                   <>
                     <div className="target-inline-card">
-                      <img src={lookupTarget.imagePath} alt={lookupTarget.name} />
+                      <PetImage
+                        src={lookupTarget.imagePath}
+                        fallbackSrc={lookupTarget.imageFallbackPath}
+                        alt={lookupTarget.name}
+                      />
                       <div className="target-inline-card__content">
                         <strong>{formatPetLabel(lookupTarget)}</strong>
                         <span>{formatEggGroups(lookupTarget.eggGroups)}</span>
+                        {formatPhysique(lookupTarget) ? (
+                          <small className="pet-physique">{formatPhysique(lookupTarget)}</small>
+                        ) : null}
                         <div className="target-inline-card__personality">
-                          <span className="stat-up">+{lookupConfig.personality.increase}</span>
-                          <span className="combo-separator"> / </span>
-                          <span className="stat-down">-{lookupConfig.personality.decrease}</span>
+                          {renderPersonalityFilter(lookupConfig.personality)}
                         </div>
-                        <span>{lookupConfig.ivs.join(" / ")}</span>
-                        {lookupConfig.medals.length > 0 ? (
+                        <span>{lookupConfig.ivs.length > 0 ? lookupConfig.ivs.join(" / ") : "任意个体"}</span>
+                        {lookupConfig.specials.length > 0 ? (
                           <div className="pet-card__medals">
-                            {lookupConfig.medals.map((medal) => (
-                              <span key={`lookup-target-${medal}`} className="pet-card__medal-chip">
-                                {medal}
+                            {lookupConfig.specials.map((special) => (
+                              <span key={`lookup-target-${special}`} className="pet-card__medal-chip">
+                                {special}
                               </span>
                             ))}
                           </div>
                         ) : null}
                       </div>
                     </div>
-                  <div className="record-list">
+                    <div className="record-list">
                       {parentMatches.length > 0 ? (
-                        parentMatches.map((match) => (
-                          <PetCard
-                            key={match.record.recordId}
-                            record={match.record}
-                          />
-                        ))
+                        parentMatches.map((match) => <PetCard key={match.record.recordId} record={match.record} />)
                       ) : (
                         <div className="empty-box">没有找到符合要求的父种，可以点右上角查看推荐抓取列表。</div>
                       )}
@@ -553,7 +839,7 @@ function Shell() {
                   <div className="pill-group">
                     {[
                       ["detailed", "详细统计"],
-                      ["medalOnly", "纯奖章"]
+                      ["medalOnly", "纯特殊"]
                     ].map(([mode, label]) => (
                       <button
                         key={mode}
@@ -566,113 +852,165 @@ function Shell() {
                     ))}
                   </div>
                 </div>
+                <div className="toolbar-card__group">
+                  <strong>统计页</strong>
+                  <div className="pill-group">
+                    {statsPages.map((page) => (
+                      <button
+                        key={page.id}
+                        type="button"
+                        className={`pill-button ${selectedStatsPageId === page.id ? "is-active" : ""}`}
+                        onClick={() => void setSelectedStatsPageId(page.id)}
+                      >
+                        {page.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="toolbar-card__row">
+                <input
+                  className="app-input"
+                  value={newStatsPageName}
+                  onChange={(event) => setNewStatsPageName(event.target.value)}
+                  placeholder="输入新统计页名称"
+                />
+                <button type="button" className="secondary-button" onClick={handleCreateStatsPage}>
+                  新增统计页
+                </button>
+                {activeStatsPage && activeStatsPage.id !== DEFAULT_STATS_PAGE_ID ? (
+                  <button type="button" className="ghost-button" onClick={() => void removeStatsPage(activeStatsPage.id)}>
+                    删除当前页
+                  </button>
+                ) : null}
               </div>
             </div>
 
-            {preferredStatsMode === "detailed" ? (
-              <div className="field-card">
-                <div className="field-card__header">
-                  <span>添加自定义统计行</span>
+              {preferredStatsMode === "detailed" ? (
+                <div className="field-card">
+                  <div className="field-card__header">
+                    <span>添加统计行</span>
+                  </div>
+                  <div className="stats-builder-grid">
+                    <div>
+                      <ConfigEditor
+                        title="新增统计行"
+                        value={statsRowConfig}
+                        onChange={(value) => setStatsRowConfig({ ...value, specials: [] })}
+                        specialTraits={specialTraits}
+                        showSpecials={false}
+                        allowAnyPersonality
+                        showAnyIvOption
+                      />
+                      <div className="toolbar-card__row">
+                        <button type="button" className="secondary-button" onClick={handleCreateStatsRow}>
+                          添加到统计行
+                        </button>
+                      </div>
+                      {statsRowMessage ? <div className="status-message">{statsRowMessage}</div> : null}
+                    </div>
+
+                    <div className="field-card stats-highlight-card">
+                      <div className="field-card__header">
+                        <span>图鉴定位</span>
+                        {statsHighlightTarget ? (
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            onClick={() => setStatsHighlightTarget(null)}
+                          >
+                            清除高亮
+                          </button>
+                        ) : null}
+                      </div>
+                      <SearchPicker
+                        label="选择要定位的精灵"
+                        value={statsHighlightTarget}
+                        onSelect={setStatsHighlightTarget}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <ConfigEditor
-                  title="新增统计组合"
-                  value={customComboConfig}
-                  onChange={(value) =>
-                    setCustomComboConfig({
-                      ...value,
-                      medals: []
-                    })
-                  }
-                  showMedals={false}
-                />
-                <div className="toolbar-card__row">
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={handleCreateCombo}
-                    disabled={Boolean(customComboError)}
-                  >
-                    添加到统计行
-                  </button>
-                </div>
-                {customComboMessage ? (
-                  <div className="status-message">{customComboMessage}</div>
-                ) : null}
-              </div>
-            ) : null}
+              ) : null}
 
             <div className="field-card">
               <div className="field-card__header">
                 <span>覆盖统计表</span>
               </div>
-              {preferredStatsMode === "detailed" ? (
-                <div className="table-toolbar">
-                  <strong>奖章过滤</strong>
-                  <div className="pill-group">
-                    {["大块头", "婉转声"].map((medal) => (
-                      <button
-                        key={medal}
-                        type="button"
-                        className={`pill-button ${
-                          selectedMedalFilter.includes(medal as MedalName) ? "is-active" : ""
-                        }`}
-                        onClick={() => toggleStatsMedal(medal as MedalName)}
-                      >
-                        {medal}
-                      </button>
-                    ))}
-                  </div>
+              <div className="table-toolbar">
+                <strong>特殊过滤</strong>
+                <div className="pill-group">
+                  {specialTraits.map((special) => (
+                    <button
+                      key={special}
+                      type="button"
+                      className={`pill-button ${selectedSpecialFilter.includes(special) ? "is-active" : ""}`}
+                      onClick={() => toggleStatsSpecial(special)}
+                    >
+                      {special}
+                    </button>
+                  ))}
                 </div>
-              ) : null}
+              </div>
               <div className="table-scroll">
                 {preferredStatsMode === "detailed" ? (
                   <table className="coverage-table coverage-table--equal">
                     <thead>
-                      <tr>
-                        <th className="coverage-table__lead-column">性格 / 个体</th>
-                        {visibleEggGroups.map((eggGroup) => (
-                          <th key={eggGroup}>{formatStatsEggGroupLabel(eggGroup)}</th>
-                        ))}
-                      </tr>
+                        <tr>
+                          <th className="coverage-table__lead-column">性格 / 个体</th>
+                          {visibleEggGroups.map((eggGroup) => (
+                            <th
+                              key={eggGroup}
+                              className={
+                                highlightedStatsEggGroups.includes(eggGroup)
+                                  ? "coverage-table__column-highlight"
+                                  : undefined
+                              }
+                            >
+                              {formatStatsEggGroupLabel(eggGroup)}
+                            </th>
+                          ))}
+                        </tr>
                     </thead>
                     <tbody>
-                      {statCombos.map((combo) => (
-                        <tr key={combo.id}>
+                      {activeStatsRows.map((row) => (
+                        <tr key={row.id}>
                           <th className="combo-header-cell">
                             <div className="combo-header-cell__top">
                               <div>
                                 <span className="combo-header-cell__personality">
-                                  <span className="stat-up">+{combo.personality.increase}</span>
-                                  <span className="combo-separator"> / </span>
-                                  <span className="stat-down">-{combo.personality.decrease}</span>
+                                  {renderPersonalityFilter(row.personality)}
                                 </span>
-                                <span className="combo-header-cell__ivs">{combo.ivs.join(" / ")}</span>
+                                <span className="combo-header-cell__ivs">
+                                  {row.ivs.length > 0 ? row.ivs.join(" / ") : "任意个体"}
+                                </span>
                               </div>
                               <button
                                 type="button"
                                 className="combo-delete-button"
-                                onClick={() => void removeCustomCombo(combo.id)}
-                                aria-label={`删除 ${combo.label}`}
+                                onClick={() =>
+                                  activeStatsPage && void removeStatsRow(activeStatsPage.id, row.id)
+                                }
+                                aria-label={`删除 ${row.label}`}
                               >
                                 ×
                               </button>
                             </div>
                           </th>
                           {visibleEggGroups.map((eggGroup) => {
-                            const covered = getCellRecords(
-                              records,
-                              eggGroup,
-                              combo,
-                              selectedMedalFilter
-                            );
-                            return (
-                              <td key={`${combo.id}-${eggGroup}`}>
-                                <button
-                                  type="button"
-                                  className={`coverage-cell ${covered.length > 0 ? "is-covered" : "is-empty"}`}
-                                  onClick={() => openDetailedCell(eggGroup, combo.id)}
-                                >
-                                  {covered.length > 0 ? `${covered.length}` : "×"}
+                            const covered = getCellRecords(records, eggGroup, row, selectedSpecialFilter);
+                              return (
+                                <td key={`${row.id}-${eggGroup}`}>
+                                  <button
+                                    type="button"
+                                    className={`coverage-cell ${covered.length > 0 ? "is-covered" : "is-empty"} ${
+                                      highlightedStatsEggGroups.includes(eggGroup)
+                                        ? "is-highlighted"
+                                        : ""
+                                    }`}
+                                    onClick={() => openDetailedCell(eggGroup, row.id)}
+                                  >
+                                    {covered.length > 0 ? `${covered.length}` : "×"}
                                 </button>
                               </td>
                             );
@@ -684,39 +1022,48 @@ function Shell() {
                 ) : (
                   <table className="coverage-table coverage-table--equal">
                     <thead>
-                      <tr>
-                        <th>奖章条件</th>
-                        {visibleEggGroups.map((eggGroup) => (
-                          <th key={eggGroup}>{formatStatsEggGroupLabel(eggGroup)}</th>
-                        ))}
-                      </tr>
+                        <tr>
+                          <th>特殊条件</th>
+                          {visibleEggGroups.map((eggGroup) => (
+                            <th
+                              key={eggGroup}
+                              className={
+                                highlightedStatsEggGroups.includes(eggGroup)
+                                  ? "coverage-table__column-highlight"
+                                  : undefined
+                              }
+                            >
+                              {formatStatsEggGroupLabel(eggGroup)}
+                            </th>
+                          ))}
+                        </tr>
                     </thead>
                     <tbody>
-                      {MEDAL_ONLY_COLUMNS.map((column) => (
-                        <tr key={column.id}>
-                          <th className="combo-header-cell">
-                            <span className="combo-header-cell__ivs">{column.label}</span>
-                          </th>
-                          {visibleEggGroups.map((eggGroup) => {
-                            const covered = getMedalCellRecords(
-                              records,
-                              eggGroup,
-                              column.requiredMedals
-                            );
+                      <tr>
+                        <th className="combo-header-cell">
+                          <span className="combo-header-cell__ivs">
+                            {selectedSpecialFilter.length > 0 ? formatSpecials(selectedSpecialFilter) : "任意特殊"}
+                          </span>
+                        </th>
+                        {visibleEggGroups.map((eggGroup) => {
+                          const covered = getSpecialCellRecords(records, eggGroup, selectedSpecialFilter);
                             return (
-                              <td key={`${column.id}-${eggGroup}`}>
+                              <td key={`special-filter-${eggGroup}`}>
                                 <button
                                   type="button"
-                                  className={`coverage-cell ${covered.length > 0 ? "is-covered" : "is-empty"}`}
-                                  onClick={() => openMedalCell(eggGroup, column.id)}
+                                  className={`coverage-cell ${covered.length > 0 ? "is-covered" : "is-empty"} ${
+                                    highlightedStatsEggGroups.includes(eggGroup)
+                                      ? "is-highlighted"
+                                      : ""
+                                  }`}
+                                  onClick={() => openSpecialCell(eggGroup)}
                                 >
                                   {covered.length > 0 ? `${covered.length}` : "×"}
-                                </button>
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
+                              </button>
+                            </td>
+                          );
+                        })}
+                      </tr>
                     </tbody>
                   </table>
                 )}
@@ -749,9 +1096,7 @@ function Shell() {
                       <button
                         key={`record-group-${eggGroup}`}
                         type="button"
-                        className={`pill-button ${
-                          recordEggGroupFilter.includes(eggGroup) ? "is-active" : ""
-                        }`}
+                        className={`pill-button ${recordEggGroupFilter.includes(eggGroup) ? "is-active" : ""}`}
                         onClick={() => toggleRecordEggGroup(eggGroup)}
                       >
                         {eggGroup}
@@ -760,18 +1105,16 @@ function Shell() {
                   </div>
                 </label>
                 <div className="toolbar-card__group">
-                  <span>奖章筛选</span>
+                  <span>特殊筛选</span>
                   <div className="pill-group">
-                    {["大块头", "婉转声"].map((medal) => (
+                    {specialTraits.map((special) => (
                       <button
-                        key={`record-${medal}`}
+                        key={`record-${special}`}
                         type="button"
-                        className={`pill-button ${
-                          recordMedalFilter.includes(medal as MedalName) ? "is-active" : ""
-                        }`}
-                        onClick={() => toggleRecordMedal(medal as MedalName)}
+                        className={`pill-button ${recordSpecialFilter.includes(special) ? "is-active" : ""}`}
+                        onClick={() => toggleRecordSpecial(special)}
                       >
-                        {medal}
+                        {special}
                       </button>
                     ))}
                   </div>
@@ -783,11 +1126,124 @@ function Shell() {
               <div className="record-list">
                 {filteredRecords.length > 0 ? (
                   filteredRecords.map((record) => (
-                    <PetCard key={record.recordId} record={record} onRemove={removeRecord} />
+                    <PetCard key={record.recordId} record={record} onEdit={openRecordEditor} onRemove={removeRecord} />
                   ))
                 ) : (
                   <div className="empty-box">当前筛选条件下没有已登记记录。</div>
                 )}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className={`page-panel ${tab === "accounts" ? "is-active" : ""}`}>
+          <div className="two-column-layout">
+            <div className="panel-stack">
+              <div className="field-card">
+                <div className="field-card__header">
+                  <span>当前账号</span>
+                  <span className="field-card__hint">
+                    共 {accounts.length} 个账号
+                  </span>
+                </div>
+                <div className="account-current-card">
+                  <div className="account-current-card__main">
+                    <strong>{activeAccount?.name ?? "默认账号"}</strong>
+                    <span>当前正在使用的用户存档</span>
+                  </div>
+                  <div className="account-current-card__stats">
+                    <div>
+                      <strong>{records.length}</strong>
+                      <span>已登记</span>
+                    </div>
+                    <div>
+                      <strong>{statsPages.length}</strong>
+                      <span>统计页</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="field-card">
+                <div className="field-card__header">
+                  <span>切换与新增</span>
+                </div>
+                <div className="panel-stack">
+                  <label className="toolbar-card__group">
+                    <span>切换账号</span>
+                    <select
+                      className="app-select"
+                      value={activeAccountId}
+                      onChange={(event) => void setActiveAccountId(event.target.value)}
+                    >
+                      {accounts.map((account) => (
+                        <option key={`account-${account.id}`} value={account.id}>
+                          {account.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="account-create-row">
+                    <input
+                      className="app-input"
+                      value={newAccountName}
+                      onChange={(event) => setNewAccountName(event.target.value)}
+                      placeholder="输入新账号名称"
+                    />
+                    <button type="button" className="secondary-button" onClick={handleCreateAccount}>
+                      新增账号
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="panel-stack">
+              <div className="field-card">
+                <div className="field-card__header">
+                  <span>账号操作</span>
+                </div>
+                <div className="account-actions-card">
+                  <button type="button" className="secondary-button" onClick={handleRenameActiveAccount}>
+                    重命名当前账号
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={handleRemoveActiveAccount}
+                    disabled={accounts.length <= 1}
+                  >
+                    删除当前账号
+                  </button>
+                  <p className="field-card__hint">
+                    删除账号会移除该账号下的全部登记记录和统计配置，操作前会再次确认。
+                  </p>
+                </div>
+              </div>
+
+              <div className="field-card">
+                <div className="field-card__header">
+                  <span>所有账号</span>
+                </div>
+                <div className="account-grid">
+                  {accounts.map((account) => (
+                    <button
+                      key={`account-card-${account.id}`}
+                      type="button"
+                      className={`account-card ${account.id === activeAccountId ? "is-active" : ""}`}
+                      onClick={() => void setActiveAccountId(account.id)}
+                    >
+                      <div className="account-card__top">
+                        <strong>{account.name}</strong>
+                        {account.id === activeAccountId ? <span>当前</span> : null}
+                      </div>
+                      <div className="account-card__meta">
+                        <span>{account.records.length} 条登记</span>
+                        <span>{account.statsPages.length} 个统计页</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -802,17 +1258,11 @@ function Shell() {
               <div className="info-page">
                 <p>
                   本项目使用的数据来源于 Biligame 洛克王国 Wiki
-                  <a
-                    href="https://wiki.biligame.com/rocom"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
+                  <a href="https://wiki.biligame.com/rocom" target="_blank" rel="noreferrer">
                     https://wiki.biligame.com/rocom
                   </a>
                 </p>
-                <p>
-                  对数据的转载和引用请遵循数据来源规范。
-                </p>
+                <p>对数据的转载和引用请遵循数据来源规范。</p>
               </div>
             </div>
 
@@ -855,6 +1305,21 @@ function Shell() {
                 </p>
               </div>
             </div>
+
+            <div className="field-card">
+              <div className="field-card__header">
+                <span>联系作者</span>
+              </div>
+              <div className="info-page">
+                <p>
+                  如果使用过程发现任何问题可以通过B站或QQ联系我，也可以在帖子下回复。
+                  <br />
+                  B站id：黑皇小狗。
+                  <br />
+                  QQ：461304186。
+                </p>
+              </div>
+            </div>
           </div>
         </section>
       </main>
@@ -864,28 +1329,21 @@ function Shell() {
           <div className="stats-modal" onClick={(event) => event.stopPropagation()}>
             <div className="stats-modal__header">
               <div className="stats-modal__summary">
-                {selectedEggGroup ? (
-                  <div className="stats-modal__egg-group-pill">{selectedEggGroup}</div>
-                ) : null}
-                {selectedCombo ? (
+                {selectedEggGroup ? <div className="stats-modal__egg-group-pill">{selectedEggGroup}</div> : null}
+                {selectedRow ? (
                   <>
                     <div className="stats-modal__summary-line">
-                      <span className="stat-up">+{selectedCombo.personality.increase}</span>
-                      <span className="combo-separator"> / </span>
-                      <span className="stat-down">-{selectedCombo.personality.decrease}</span>
+                      {renderPersonalityFilter(selectedRow.personality)}
                     </div>
-                    <div className="stats-modal__summary-line">{selectedCombo.ivs.join(" / ")}</div>
                     <div className="stats-modal__summary-line">
-                      {formatMedals(selectedMedalFilter)}
+                      {selectedRow.ivs.length > 0 ? selectedRow.ivs.join(" / ") : "任意个体"}
                     </div>
+                    <div className="stats-modal__summary-line">{formatSpecials(selectedSpecialFilter)}</div>
                   </>
-                ) : selectedMedalColumn ? (
-                  <>
-                    <div className="stats-modal__summary-line">{selectedMedalColumn.label}</div>
-                    <div className="stats-modal__summary-line">
-                      {selectedMedalColumn.requiredMedals.join(" / ")}
-                    </div>
-                  </>
+                ) : selectedSpecialColumnId ? (
+                  <div className="stats-modal__summary-line">
+                    {selectedSpecialFilter.length > 0 ? formatSpecials(selectedSpecialFilter) : "任意特殊"}
+                  </div>
                 ) : null}
               </div>
               <button type="button" className="ghost-button" onClick={closeStatsModal}>
@@ -897,17 +1355,15 @@ function Shell() {
               <div className="stats-modal__section">
                 <h3>现有覆盖</h3>
                 <div className="record-list modal-scroll-area">
-                  {selectedCombo ? (
+                  {selectedRow ? (
                     cellRecords.length > 0 ? (
                       cellRecords.map((record) => <PetCard key={record.recordId} record={record} />)
                     ) : (
                       <div className="empty-box">当前格子还没有已登记记录。</div>
                     )
-                  ) : selectedMedalColumn ? (
-                    medalCellRecords.length > 0 ? (
-                      medalCellRecords.map((record) => (
-                        <PetCard key={record.recordId} record={record} />
-                      ))
+                  ) : selectedSpecialColumnId ? (
+                    specialCellRecords.length > 0 ? (
+                      specialCellRecords.map((record) => <PetCard key={record.recordId} record={record} />)
                     ) : (
                       <div className="empty-box">当前格子还没有已登记记录。</div>
                     )
@@ -915,7 +1371,7 @@ function Shell() {
                 </div>
               </div>
 
-              {selectedCombo ? (
+              {selectedRow && selectedRecommendationConfig ? (
                 <div className="stats-modal__section">
                   <div className="stats-modal__section-header">
                     <h3>推荐补抓</h3>
@@ -926,9 +1382,7 @@ function Shell() {
                           <button
                             key={`stats-filter-${eggGroup}`}
                             type="button"
-                            className={`pill-button ${
-                              statsRecommendationEggGroupFilter === eggGroup ? "is-active" : ""
-                            }`}
+                            className={`pill-button ${statsRecommendationEggGroupFilter === eggGroup ? "is-active" : ""}`}
                             onClick={() => setStatsRecommendationEggGroupFilter(eggGroup)}
                           >
                             {eggGroup}
@@ -940,21 +1394,25 @@ function Shell() {
                   <div className="recommendation-grid modal-scroll-area">
                     {pagedStatsRecommendations.length > 0 ? (
                       pagedStatsRecommendations.map((item) => (
-                        <article
-                          key={`stats-${item.pet.entryId}`}
-                          className="recommendation-card"
-                        >
-                          <img src={item.pet.imagePath} alt={item.pet.name} />
+                        <article key={`stats-${item.pet.entryId}`} className="recommendation-card">
+                          <PetImage
+                            src={item.pet.imagePath}
+                            fallbackSrc={item.pet.imageFallbackPath}
+                            alt={item.pet.name}
+                          />
                           <div>
                             <strong>{formatPetLabel(item.pet)}</strong>
                             <span>{formatEggGroups(item.pet.eggGroups)}</span>
+                            {formatPhysique(item.pet) ? (
+                              <small className="pet-physique">{formatPhysique(item.pet)}</small>
+                            ) : null}
                             <span>匹配目标蛋组：{item.matchedTargetEggGroups.join(" / ")}</span>
                             <span>可补缺口：{item.missingEggGroupsCovered.join(" / ")}</span>
                           </div>
                         </article>
                       ))
                     ) : (
-                      <div className="empty-box">当前条件下没有额外推荐，说明这个蛋组缺口已经比较完整。</div>
+                      <div className="empty-box">当前条件下没有额外推荐。</div>
                     )}
                   </div>
                   {statsRecommendations.length > statsPageSize ? (
@@ -999,22 +1457,21 @@ function Shell() {
             <div className="stats-modal__header">
               <div className="stats-modal__summary">
                 {lookupTarget ? (
-                  <>
-                    <div className="stats-modal__egg-group-pill">
-                      {formatEggGroups(lookupTarget.eggGroups)}
+                    <>
+                    <div className="stats-modal__egg-group-pill">{formatEggGroups(lookupTarget.eggGroups)}</div>
+                    <div className="stats-modal__summary-line">{formatPetLabel(lookupTarget)}</div>
+                    {formatPhysique(lookupTarget) ? (
+                      <div className="stats-modal__summary-line stats-modal__summary-line--muted">
+                        {formatPhysique(lookupTarget)}
+                      </div>
+                    ) : null}
+                    <div className="stats-modal__summary-line">
+                      {renderPersonalityFilter(lookupConfig.personality)}
                     </div>
                     <div className="stats-modal__summary-line">
-                      {formatPetLabel(lookupTarget)}
+                      {lookupConfig.ivs.length > 0 ? lookupConfig.ivs.join(" / ") : "任意个体"}
                     </div>
-                    <div className="stats-modal__summary-line">
-                      <span className="stat-up">+{lookupConfig.personality.increase}</span>
-                      <span className="combo-separator"> / </span>
-                      <span className="stat-down">-{lookupConfig.personality.decrease}</span>
-                    </div>
-                    <div className="stats-modal__summary-line">{lookupConfig.ivs.join(" / ")}</div>
-                    <div className="stats-modal__summary-line">
-                      {formatMedals(lookupConfig.medals)}
-                    </div>
+                    <div className="stats-modal__summary-line">{formatSpecials(lookupConfig.specials)}</div>
                   </>
                 ) : null}
               </div>
@@ -1033,9 +1490,7 @@ function Shell() {
                         <button
                           key={`lookup-filter-${eggGroup}`}
                           type="button"
-                          className={`pill-button ${
-                            lookupRecommendationEggGroupFilter === eggGroup ? "is-active" : ""
-                          }`}
+                          className={`pill-button ${lookupRecommendationEggGroupFilter === eggGroup ? "is-active" : ""}`}
                           onClick={() => setLookupRecommendationEggGroupFilter(eggGroup)}
                         >
                           {eggGroup}
@@ -1047,25 +1502,29 @@ function Shell() {
                 <div className="recommendation-grid modal-scroll-area">
                   {pagedLookupRecommendations.length > 0 ? (
                     pagedLookupRecommendations.map((item) => (
-                      <article
-                        key={`lookup-${item.pet.entryId}`}
-                        className="recommendation-card"
-                      >
-                        <img src={item.pet.imagePath} alt={item.pet.name} />
-                        <div>
-                          <strong>{formatPetLabel(item.pet)}</strong>
-                          <span>{formatEggGroups(item.pet.eggGroups)}</span>
-                          <span>匹配目标蛋组：{item.matchedTargetEggGroups.join(" / ")}</span>
-                          <span>可补缺口：{item.missingEggGroupsCovered.join(" / ")}</span>
-                        </div>
+                        <article key={`lookup-${item.pet.entryId}`} className="recommendation-card">
+                          <PetImage
+                            src={item.pet.imagePath}
+                            fallbackSrc={item.pet.imageFallbackPath}
+                            alt={item.pet.name}
+                          />
+                          <div>
+                            <strong>{formatPetLabel(item.pet)}</strong>
+                            <span>{formatEggGroups(item.pet.eggGroups)}</span>
+                            {formatPhysique(item.pet) ? (
+                              <small className="pet-physique">{formatPhysique(item.pet)}</small>
+                            ) : null}
+                            <span>匹配目标蛋组：{item.matchedTargetEggGroups.join(" / ")}</span>
+                            <span>可补缺口：{item.missingEggGroupsCovered.join(" / ")}</span>
+                          </div>
                       </article>
                     ))
                   ) : (
                     <div className="empty-box">当前配置下，所有目标蛋组都已经有覆盖了。</div>
                   )}
                 </div>
-                  {filteredLookupRecommendations.length > lookupPageSize ? (
-                    <div className="pagination-bar">
+                {filteredLookupRecommendations.length > lookupPageSize ? (
+                  <div className="pagination-bar">
                     <button
                       type="button"
                       className="ghost-button"
@@ -1093,6 +1552,134 @@ function Shell() {
                     </button>
                   </div>
                 ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {editingRecord && editingConfig ? (
+        <div className="modal-overlay" onClick={closeRecordEditor}>
+          <div className="stats-modal stats-modal--single" onClick={(event) => event.stopPropagation()}>
+            <div className="stats-modal__header">
+                <div className="stats-modal__summary">
+                  <div className="stats-modal__egg-group-pill">{formatEggGroups(editingRecord.eggGroups)}</div>
+                  <div className="stats-modal__summary-line">{formatPetLabel(editingRecord)}</div>
+                </div>
+              <button type="button" className="ghost-button" onClick={closeRecordEditor}>
+                关闭
+              </button>
+            </div>
+            <div className="stats-modal__body stats-modal__body--single">
+              <div className="stats-modal__section">
+                <ConfigEditor
+                  title="编辑已登记配置"
+                  value={editingConfig}
+                  onChange={handleEditingConfigChange}
+                  specialTraits={specialTraits}
+                />
+                <div className="toolbar-card__row toolbar-card__row--end">
+                  <button type="button" className="secondary-button" onClick={handleSaveRecordEdit}>
+                    保存修改
+                  </button>
+                </div>
+                {editingMessage ? <div className="status-message">{editingMessage}</div> : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingDeleteAccount ? (
+        <div className="modal-overlay" onClick={() => setPendingDeleteAccount(null)}>
+          <div className="stats-modal stats-modal--single" onClick={(event) => event.stopPropagation()}>
+            <div className="stats-modal__header">
+              <div className="stats-modal__summary">
+                <div className="stats-modal__egg-group-pill">删除账号确认</div>
+                <div className="stats-modal__summary-line">
+                  {pendingDeleteAccount.name}
+                </div>
+              </div>
+              <button type="button" className="ghost-button" onClick={() => setPendingDeleteAccount(null)}>
+                取消
+              </button>
+            </div>
+            <div className="stats-modal__body stats-modal__body--single">
+              <div className="stats-modal__section">
+                <div className="empty-box">
+                  删除账号会移除该账号下的全部登记记录和统计配置，这个操作不能撤销。
+                </div>
+                <div className="toolbar-card__row toolbar-card__row--end">
+                  <button type="button" className="ghost-button" onClick={() => setPendingDeleteAccount(null)}>
+                    返回
+                  </button>
+                  <button type="button" className="secondary-button" onClick={confirmRemoveAccount}>
+                    确认删除
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingRenameAccount ? (
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            setPendingRenameAccount(null);
+            setRenameAccountInput("");
+          }}
+        >
+          <div className="stats-modal stats-modal--single" onClick={(event) => event.stopPropagation()}>
+            <div className="stats-modal__header">
+              <div className="stats-modal__summary">
+                <div className="stats-modal__egg-group-pill">重命名账号</div>
+                <div className="stats-modal__summary-line">{pendingRenameAccount.currentName}</div>
+              </div>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => {
+                  setPendingRenameAccount(null);
+                  setRenameAccountInput("");
+                }}
+              >
+                取消
+              </button>
+            </div>
+            <div className="stats-modal__body stats-modal__body--single">
+              <div className="stats-modal__section">
+                <label className="toolbar-card__group">
+                  <span>新的账号名称</span>
+                  <input
+                    className="app-input"
+                    value={renameAccountInput}
+                    onChange={(event) => setRenameAccountInput(event.target.value)}
+                    placeholder="输入新的账号名称"
+                    autoFocus
+                  />
+                </label>
+                <div className="toolbar-card__row toolbar-card__row--end">
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={() => {
+                      setPendingRenameAccount(null);
+                      setRenameAccountInput("");
+                    }}
+                  >
+                    返回
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={confirmRenameAccount}
+                    disabled={!renameAccountInput.trim()}
+                  >
+                    保存名称
+                  </button>
+                </div>
               </div>
             </div>
           </div>
